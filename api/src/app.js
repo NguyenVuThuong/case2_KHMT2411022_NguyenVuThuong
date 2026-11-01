@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const assignmentRoutes = require('./routes/assignmentRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -40,6 +42,13 @@ app.get('/api/health', (req, res) => {
 
 // Các route xác thực: /api/auth/...
 app.use('/api/auth', authRoutes);
+
+// Các route người dùng: /api/users/...
+app.use('/api/users', userRoutes);
+
+// Route giao việc: /api/tasks/:id/assignees/...
+// Gắn trước /api/tasks để đường dẫn dài hơn được xử lý trước
+app.use('/api/tasks/:id/assignees', assignmentRoutes);
 
 // Các route công việc: /api/tasks/...
 app.use('/api/tasks', taskRoutes);
