@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
+const shareRoutes = require('./routes/shareRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -46,9 +47,9 @@ app.use('/api/auth', authRoutes);
 // Các route người dùng: /api/users/...
 app.use('/api/users', userRoutes);
 
-// Route giao việc: /api/tasks/:id/assignees/...
-// Gắn trước /api/tasks để đường dẫn dài hơn được xử lý trước
+// Giao việc và chia sẻ: gắn trước /api/tasks để đường dẫn dài hơn được xử lý trước
 app.use('/api/tasks/:id/assignees', assignmentRoutes);
+app.use('/api/tasks/:id/shares', shareRoutes);
 
 // Các route công việc: /api/tasks/...
 app.use('/api/tasks', taskRoutes);
