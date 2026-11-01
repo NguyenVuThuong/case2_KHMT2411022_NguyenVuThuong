@@ -59,6 +59,18 @@ class ApiClient {
     return _request('PUT', path, body: body, auth: auth);
   }
 
+  Future<Map<String, dynamic>> patch(
+      String path,
+      Map<String, dynamic> body, {
+        bool auth = true,
+      }) {
+    return _request('PATCH', path, body: body, auth: auth);
+  }
+
+  Future<Map<String, dynamic>> delete(String path, {bool auth = true}) {
+    return _request('DELETE', path, auth: auth);
+  }
+
   // ----- Hàm gửi request dùng chung -----
   Future<Map<String, dynamic>> _request(
       String method,

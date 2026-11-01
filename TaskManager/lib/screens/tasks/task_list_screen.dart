@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../models/task.dart';
 import '../../models/user.dart';
+import '../../services/api_client.dart';
+import '../../services/task_service.dart';
+import '../../widgets/loading_view.dart';
+import '../../widgets/task_card.dart';
 import '../profile/profile_screen.dart';
+import 'task_create_screen.dart';
+import 'task_detail_screen.dart';
 
-// TẠM THỜI: sẽ viết lại thành danh sách công việc ở Giai đoạn 4
 class TaskListScreen extends StatefulWidget {
   final User user;
 
@@ -14,12 +20,75 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
+  final _taskService = TaskService();
+
   late User _user;
+  List<Task> _tasks = [];
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _user = widget.user;
+    _loadTasks();
+  }
+
+  // showLoading = false khi kéo để tải lại (đã có vòng quay của RefreshIndicator)
+  Future<void> _loadTasks({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final tasks = await _taskService.getTasks();
+      if (!mounted) return;
+      setState(() {
+        _tasks = tasks;
+        _error = null;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.displayMessage);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _openCreate() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const TaskCreateScreen()),
+    );
+
+    if (!mounted) return;
+    if (created == true) {
+      _showMessage('Đã thêm công việc');
+      _loadTasks(showLoading: false);
+    }
+  }
+
+  Future<void> _openDetail(Task task) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
+    );
+
+    if (!mounted) return;
+    if (deleted == true) {
+      _showMessage('Đã xóa công việc');
+    }
+    // Luôn tải lại vì trạng thái có thể đã đổi ở màn hình chi tiết
+    _loadTasks(showLoading: false);
   }
 
   void _openProfile() {
@@ -27,9 +96,43 @@ class _TaskListScreenState extends State<TaskListScreen> {
       MaterialPageRoute(
         builder: (_) => ProfileScreen(
           user: _user,
-          // Khi hồ sơ được sửa, cập nhật lại lời chào ở màn hình này
           onUserUpdated: (updated) => setState(() => _user = updated),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const LoadingView();
+    }
+    if (_error != null) {
+      return ErrorView(message: _error!, onRetry: () => _loadTasks());
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadTasks(showLoading: false),
+      child: _tasks.isEmpty
+          ? ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 160),
+          Icon(Icons.inbox_outlined, size: 64),
+          SizedBox(height: 12),
+          Center(
+            child: Text('Chưa có công việc nào.\nBấm nút bên dưới để thêm.',
+                textAlign: TextAlign.center),
+          ),
+        ],
+      )
+          : ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8, bottom: 88),
+        itemCount: _tasks.length,
+        itemBuilder: (context, index) {
+          final task = _tasks[index];
+          return TaskCard(task: task, onTap: () => _openDetail(task));
+        },
       ),
     );
   }
@@ -47,18 +150,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Xin chào, ${_user.fullName}',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(_user.email),
-          ],
-        ),
+      body: _buildBody(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreate,
+        icon: const Icon(Icons.add),
+        label: const Text('Thêm công việc'),
       ),
     );
   }
