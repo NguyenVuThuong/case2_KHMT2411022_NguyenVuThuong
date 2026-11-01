@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../models/assignee.dart';
 import '../../models/task.dart';
 import '../../services/api_client.dart';
+import '../../services/assignment_service.dart';
 import '../../services/task_service.dart';
 import '../../utils/date_formatter.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/priority_badge.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/user_avatar.dart';
+import '../assignment/assign_task_screen.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -20,8 +24,10 @@ class TaskDetailScreen extends StatefulWidget {
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final _taskService = TaskService();
+  final _assignmentService = AssignmentService();
 
   Task? _task;
+  List<Assignee> _assignees = [];
   bool _isLoading = true;
   bool _isUpdating = false;
   String? _error;
@@ -42,6 +48,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final task = await _taskService.getTask(widget.taskId);
       if (!mounted) return;
       setState(() => _task = task);
+      // Tải danh sách người được giao song song, không chặn màn hình
+      _loadAssignees();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.displayMessage);
@@ -49,6 +57,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _loadAssignees() async {
+    try {
+      final list = await _assignmentService.list(widget.taskId);
+      if (!mounted) return;
+      setState(() => _assignees = list);
+    } on ApiException {
+      // Không tải được danh sách người được giao thì bỏ qua, không chặn màn hình
     }
   }
 
@@ -74,6 +92,23 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       setState(() => _task = updated);
       _showMessage('Đã cập nhật công việc');
     }
+  }
+
+  // Mở màn hình giao việc, quay về thì tải lại danh sách người được giao
+  Future<void> _openAssign() async {
+    final task = _task;
+    if (task == null) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AssignTaskScreen(taskId: task.id, taskTitle: task.title),
+      ),
+    );
+
+    if (!mounted) return;
+    _loadAssignees();
   }
 
   Future<void> _changeStatus(String newStatus) async {
@@ -159,8 +194,46 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
+  Widget _buildAssigneesSection(Task task) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Người được giao', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        if (_assignees.isEmpty)
+          const Text('Chưa giao cho ai')
+        else
+          ..._assignees.map(
+                (a) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: UserAvatar(user: a.user),
+              title: Text(a.user.fullName),
+              subtitle: Text(a.user.email),
+              trailing: a.isPrimary
+                  ? const Chip(
+                label: Text('Phụ trách chính'),
+                visualDensity: VisualDensity.compact,
+              )
+                  : null,
+            ),
+          ),
+        // Chỉ người có quyền quản lý (người tạo) mới thấy nút này
+        if (task.can('manage')) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isUpdating ? null : _openAssign,
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Quản lý người được giao'),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildContent(Task task) {
     final overdue = task.isOverdue;
+    final canChangeStatus = task.can('changeStatus');
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -176,8 +249,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             if (overdue)
               Chip(
                 label: const Text('Quá hạn'),
-                backgroundColor:
-                Theme.of(context).colorScheme.errorContainer,
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
                 visualDensity: VisualDensity.compact,
               ),
           ],
@@ -187,6 +259,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         const SizedBox(height: 4),
         Text(task.description.isEmpty ? 'Không có mô tả' : task.description),
         const SizedBox(height: 16),
+        _buildInfoRow(
+          Icons.badge_outlined,
+          'Vai trò của bạn',
+          kRoleLabels[task.myRole] ?? 'Không xác định',
+        ),
         _buildInfoRow(
           Icons.play_arrow,
           'Bắt đầu',
@@ -203,8 +280,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           DateFormatter.date(task.createdAt),
         ),
         const SizedBox(height: 16),
-        Text('Cập nhật trạng thái',
-            style: Theme.of(context).textTheme.titleMedium),
+        _buildAssigneesSection(task),
+        const SizedBox(height: 16),
+        Text(
+          'Cập nhật trạng thái',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -212,7 +293,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             return ChoiceChip(
               label: Text(kStatusLabels[s] ?? s),
               selected: task.status == s,
-              onSelected: _isUpdating
+              // Không có quyền đổi trạng thái thì vô hiệu hóa các nút
+              onSelected: (_isUpdating || !canChangeStatus)
                   ? null
                   : (selected) {
                 if (selected) {
@@ -222,6 +304,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             );
           }).toList(),
         ),
+        if (!canChangeStatus)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Bạn không có quyền đổi trạng thái công việc này',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
       ],
     );
   }
@@ -242,17 +332,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final task = _task;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
-          if (_task != null)
+          // Chỉ hiện nút khi có đúng quyền (backend vẫn kiểm tra lại)
+          if (task != null && task.can('editContent'))
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               tooltip: 'Sửa',
               onPressed: _isUpdating ? null : _openEdit,
             ),
-          if (_task != null)
+          if (task != null && task.can('delete'))
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Xóa',
