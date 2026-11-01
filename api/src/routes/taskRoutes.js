@@ -14,6 +14,7 @@ const {
   validateTaskId
 } = require('../validators/taskValidator');
 const { protect } = require('../middleware/authMiddleware');
+const { requireTaskAccess } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
@@ -24,10 +25,25 @@ router.use(protect);
 router.get('/', getTasks);
 router.post('/', validateCreateTask, createTask);
 
-// Các route theo :id (luôn kiểm tra :id hợp lệ trước)
-router.get('/:id', validateTaskId, getTask);
-router.put('/:id', validateTaskId, validateUpdateTask, updateTask);
-router.patch('/:id/status', validateTaskId, validateStatus, updateTaskStatus);
-router.delete('/:id', validateTaskId, deleteTask);
+// Các route theo :id. Thứ tự: kiểm tra id, kiểm tra quyền, kiểm tra dữ liệu, xử lý
+router.get('/:id', validateTaskId, requireTaskAccess('view'), getTask);
+
+router.put(
+  '/:id',
+  validateTaskId,
+  requireTaskAccess('editContent'),
+  validateUpdateTask,
+  updateTask
+);
+
+router.patch(
+  '/:id/status',
+  validateTaskId,
+  requireTaskAccess('changeStatus'),
+  validateStatus,
+  updateTaskStatus
+);
+
+router.delete('/:id', validateTaskId, requireTaskAccess('delete'), deleteTask);
 
 module.exports = router;
