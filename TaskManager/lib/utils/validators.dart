@@ -42,4 +42,15 @@ class Validators {
     }
     return null;
   }
+
+  // Tên công việc: bắt buộc, tối đa 200 ký tự (khớp backend)
+  static String? taskTitle(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Vui lòng nhập tên công việc';
+    }
+    if (value.trim().length > 200) {
+      return 'Tên công việc tối đa 200 ký tự';
+    }
+    return null;
+  }
 }
