@@ -7,6 +7,7 @@ import '../../utils/date_formatter.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/priority_badge.dart';
 import '../../widgets/status_badge.dart';
+import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   final String taskId;
@@ -55,6 +56,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  // Mở màn hình sửa; nếu sửa xong sẽ nhận lại công việc đã cập nhật
+  Future<void> _openEdit() async {
+    final task = _task;
+    if (task == null) {
+      return;
+    }
+
+    final updated = await Navigator.of(context).push<Task>(
+      MaterialPageRoute(builder: (_) => TaskEditScreen(task: task)),
+    );
+
+    if (!mounted) return;
+    if (updated != null) {
+      setState(() => _task = updated);
+      _showMessage('Đã cập nhật công việc');
+    }
   }
 
   Future<void> _changeStatus(String newStatus) async {
@@ -227,6 +246,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
+          if (_task != null)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Sửa',
+              onPressed: _isUpdating ? null : _openEdit,
+            ),
           if (_task != null)
             IconButton(
               icon: const Icon(Icons.delete_outline),
