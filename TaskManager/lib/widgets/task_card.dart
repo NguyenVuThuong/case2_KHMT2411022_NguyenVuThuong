@@ -12,10 +12,31 @@ class TaskCard extends StatelessWidget {
 
   const TaskCard({super.key, required this.task, required this.onTap});
 
+  // Nhãn vai trò, chỉ hiện khi công việc không phải do mình tạo
+  Widget _buildRoleBadge(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        kRoleLabels[task.myRole] ?? '',
+        style: TextStyle(
+          color: scheme.onSecondaryContainer,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final errorColor = Theme.of(context).colorScheme.error;
     final overdue = task.isOverdue;
+    final showRole = task.myRole != null && task.myRole != 'owner';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -40,6 +61,7 @@ class TaskCard extends StatelessWidget {
                 children: [
                   StatusBadge(status: task.status),
                   PriorityBadge(priority: task.priority),
+                  if (showRole) _buildRoleBadge(context),
                 ],
               ),
               const SizedBox(height: 8),

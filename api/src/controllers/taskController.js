@@ -1,8 +1,15 @@
 const Task = require('../models/Task');
+const TaskShare = require('../models/TaskShare');
 const { parseOptionalDate } = require('../validators/taskValidator');
+const { computeAccess, findAccessibleTasks } = require('../services/taskService');
 
-// Chuẩn hóa dữ liệu công việc trả về cho client
-function toTaskResponse(task) {
+// Các phạm vi lọc cho GET /api/tasks
+const SCOPES = ['all', 'created', 'assigned', 'shared'];
+
+// Chuẩn hóa dữ liệu công việc trả về cho client.
+// Thêm myRole và permissions để Flutter biết nên hiện nút nào
+// (backend vẫn là nơi kiểm tra quyền thật sự).
+function toTaskResponse(task, access) {
   return {
     id: task._id,
     title: task.title,
@@ -15,23 +22,10 @@ function toTaskResponse(task) {
     priority: task.priority,
     status: task.status,
     createdAt: task.createdAt,
-    updatedAt: task.updatedAt
+    updatedAt: task.updatedAt,
+    myRole: access ? access.role : null,
+    permissions: access ? access.capabilities : []
   };
-}
-
-// Tìm công việc theo :id trên URL, chỉ khi do người dùng hiện tại tạo.
-// Giai đoạn 5 sẽ thay hàm này bằng kiểm tra quyền đầy đủ.
-function findOwnTask(req) {
-  return Task.findOne({ _id: req.params.id, createdBy: req.user._id });
-}
-
-// Không có công việc, hoặc công việc của người khác: cùng một thông báo 404,
-// để không tiết lộ công việc đó có tồn tại hay không
-function sendTaskNotFound(res) {
-  return res.status(404).json({
-    status: 'error',
-    message: 'Không tìm thấy công việc'
-  });
 }
 
 // POST /api/tasks
@@ -53,46 +47,44 @@ async function createTask(req, res) {
   res.status(201).json({
     status: 'success',
     message: 'Tạo công việc thành công',
-    data: { task: toTaskResponse(task) }
+    data: { task: toTaskResponse(task, computeAccess(task, req.user._id, null)) }
   });
 }
 
-// GET /api/tasks
+// GET /api/tasks?scope=all|created|assigned|shared
 async function getTasks(req, res) {
-  // Giai đoạn 4: chỉ trả công việc do chính người dùng tạo.
-  // Giai đoạn 5 sẽ mở rộng thêm công việc được giao và được chia sẻ.
-  const tasks = await Task.find({ createdBy: req.user._id }).sort({
-    createdAt: -1 // mới nhất lên đầu
-  });
+  const scope = req.query.scope === undefined ? 'all' : req.query.scope;
+
+  if (typeof scope !== 'string' || !SCOPES.includes(scope)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Phạm vi không hợp lệ',
+      errors: [`scope phải là một trong: ${SCOPES.join(', ')}`]
+    });
+  }
+
+  const items = await findAccessibleTasks(req.user._id, scope);
 
   res.json({
     status: 'success',
     data: {
-      count: tasks.length,
-      tasks: tasks.map(toTaskResponse)
+      count: items.length,
+      tasks: items.map(({ task, access }) => toTaskResponse(task, access))
     }
   });
 }
 
-// GET /api/tasks/:id
+// GET /api/tasks/:id  (middleware đã kiểm tra quyền và gắn req.task, req.access)
 async function getTask(req, res) {
-  const task = await findOwnTask(req);
-  if (!task) {
-    return sendTaskNotFound(res);
-  }
-
   res.json({
     status: 'success',
-    data: { task: toTaskResponse(task) }
+    data: { task: toTaskResponse(req.task, req.access) }
   });
 }
 
 // PUT /api/tasks/:id
 async function updateTask(req, res) {
-  const task = await findOwnTask(req);
-  if (!task) {
-    return sendTaskNotFound(res);
-  }
+  const task = req.task;
 
   // Chỉ cập nhật những trường được phép và có gửi lên.
   // Mọi trường khác (createdBy, status, ...) trong body đều bị bỏ qua.
@@ -127,16 +119,13 @@ async function updateTask(req, res) {
   res.json({
     status: 'success',
     message: 'Cập nhật công việc thành công',
-    data: { task: toTaskResponse(task) }
+    data: { task: toTaskResponse(task, req.access) }
   });
 }
 
 // PATCH /api/tasks/:id/status
 async function updateTaskStatus(req, res) {
-  const task = await findOwnTask(req);
-  if (!task) {
-    return sendTaskNotFound(res);
-  }
+  const task = req.task;
 
   task.status = req.body.status;
   await task.save();
@@ -144,17 +133,16 @@ async function updateTaskStatus(req, res) {
   res.json({
     status: 'success',
     message: 'Cập nhật trạng thái thành công',
-    data: { task: toTaskResponse(task) }
+    data: { task: toTaskResponse(task, req.access) }
   });
 }
 
 // DELETE /api/tasks/:id
 async function deleteTask(req, res) {
-  const task = await findOwnTask(req);
-  if (!task) {
-    return sendTaskNotFound(res);
-  }
+  const task = req.task;
 
+  // Xóa luôn các bản ghi chia sẻ của công việc này để không còn dữ liệu mồ côi
+  await TaskShare.deleteMany({ taskId: task._id });
   await task.deleteOne();
 
   res.json({
