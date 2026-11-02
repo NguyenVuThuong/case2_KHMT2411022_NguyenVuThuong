@@ -4,9 +4,9 @@ import 'api_client.dart';
 class TaskService {
   final ApiClient _api = ApiClient();
 
-  // Lấy danh sách công việc của người dùng
-  Future<List<Task>> getTasks() async {
-    final response = await _api.get('/tasks');
+  // Lấy danh sách công việc theo phạm vi: all, created, assigned, shared
+  Future<List<Task>> getTasks({String scope = 'all'}) async {
+    final response = await _api.get('/tasks?scope=$scope');
     final data = response['data'] as Map<String, dynamic>;
     final list = data['tasks'] as List;
     return list
@@ -42,7 +42,7 @@ class TaskService {
     return Task.fromJson(data['task'] as Map<String, dynamic>);
   }
 
-  // Sửa công việc (sẽ dùng ở Bước 4.4). Ngày null nghĩa là xóa ngày đó
+  // Sửa công việc. Ngày null nghĩa là xóa ngày đó
   Future<Task> updateTask(
       String id, {
         required String title,

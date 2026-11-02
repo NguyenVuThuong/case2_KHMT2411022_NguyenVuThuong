@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../models/assignee.dart';
 import '../../models/task.dart';
+import '../../models/task_share.dart';
 import '../../services/api_client.dart';
 import '../../services/assignment_service.dart';
 import '../../services/task_service.dart';
+import '../../services/task_share_service.dart';
 import '../../utils/date_formatter.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/priority_badge.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/user_avatar.dart';
 import '../assignment/assign_task_screen.dart';
+import '../sharing/task_sharing_screen.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -25,9 +28,11 @@ class TaskDetailScreen extends StatefulWidget {
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final _taskService = TaskService();
   final _assignmentService = AssignmentService();
+  final _shareService = TaskShareService();
 
   Task? _task;
   List<Assignee> _assignees = [];
+  List<TaskShare> _shares = [];
   bool _isLoading = true;
   bool _isUpdating = false;
   String? _error;
@@ -48,8 +53,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final task = await _taskService.getTask(widget.taskId);
       if (!mounted) return;
       setState(() => _task = task);
-      // Tải danh sách người được giao song song, không chặn màn hình
+      // Tải người được giao và người được chia sẻ song song, không chặn màn hình
       _loadAssignees();
+      _loadShares();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.displayMessage);
@@ -66,7 +72,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (!mounted) return;
       setState(() => _assignees = list);
     } on ApiException {
-      // Không tải được danh sách người được giao thì bỏ qua, không chặn màn hình
+      // Không tải được thì bỏ qua, không chặn màn hình
+    }
+  }
+
+  Future<void> _loadShares() async {
+    try {
+      final list = await _shareService.list(widget.taskId);
+      if (!mounted) return;
+      setState(() => _shares = list);
+    } on ApiException {
+      // Không tải được thì bỏ qua, không chặn màn hình
     }
   }
 
@@ -109,6 +125,27 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     if (!mounted) return;
     _loadAssignees();
+  }
+
+  // Mở màn hình chia sẻ, quay về thì tải lại danh sách người được chia sẻ
+  Future<void> _openSharing() async {
+    final task = _task;
+    if (task == null) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TaskSharingScreen(
+          taskId: task.id,
+          taskTitle: task.title,
+          ownerId: task.createdBy,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    _loadShares();
   }
 
   Future<void> _changeStatus(String newStatus) async {
@@ -231,6 +268,44 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
+  Widget _buildSharesSection(Task task) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Người được chia sẻ',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        if (_shares.isEmpty)
+          const Text('Chưa chia sẻ cho ai')
+        else
+          ..._shares.map(
+                (s) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: UserAvatar(user: s.user),
+              title: Text(s.user.fullName),
+              subtitle: Text(s.user.email),
+              trailing: Chip(
+                label: Text(kPermissionLabels[s.permission] ?? s.permission),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+        // Chỉ người có quyền quản lý (người tạo) mới thấy nút này
+        if (task.can('manage')) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isUpdating ? null : _openSharing,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Quản lý chia sẻ'),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildContent(Task task) {
     final overdue = task.isOverdue;
     final canChangeStatus = task.can('changeStatus');
@@ -281,6 +356,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         ),
         const SizedBox(height: 16),
         _buildAssigneesSection(task),
+        const SizedBox(height: 16),
+        _buildSharesSection(task),
         const SizedBox(height: 16),
         Text(
           'Cập nhật trạng thái',
