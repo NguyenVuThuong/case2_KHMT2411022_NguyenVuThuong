@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { notifyTaskAssigned } = require('../services/notificationService');
 
 function sameId(a, b) {
   return String(a) === String(b);
@@ -92,6 +93,13 @@ async function addAssignees(req, res) {
   }
 
   await task.save();
+
+  // Báo cho những người MỚI được giao (người đã được giao trước đó không bị báo lại)
+  await notifyTaskAssigned(
+    task,
+    req.user,
+    newUsers.map((u) => u._id)
+  );
 
   const assignees = await buildAssigneeList(task);
 

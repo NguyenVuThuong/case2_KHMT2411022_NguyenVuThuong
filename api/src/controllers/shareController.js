@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const TaskShare = require('../models/TaskShare');
+const { notifyTaskShared } = require('../services/notificationService');
 
 // Chuẩn hóa một bản ghi chia sẻ (đã populate thông tin người được chia sẻ)
 function toShareResponse(share) {
@@ -106,6 +107,14 @@ async function addShares(req, res) {
       }
       throw error;
     }
+
+    // Báo cho những người MỚI được chia sẻ
+    await notifyTaskShared(
+      task,
+      req.user,
+      newUsers.map((u) => u._id),
+      permission
+    );
   }
 
   const shares = await buildShareList(task._id);
