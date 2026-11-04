@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const TaskShare = require('../models/TaskShare');
+const { queueTaskEventEmails } = require('./emailService');
 
 const STATUS_LABELS = {
   todo: 'Chưa thực hiện',
@@ -44,8 +45,9 @@ async function getParticipantIds(task) {
   ].filter(Boolean); // bỏ giá trị null (chưa có người phụ trách chính)
 }
 
-// Báo cho tất cả người liên quan (trừ người thao tác)
-async function notifyParticipants(task, actor, data) {
+// Báo cho tất cả người liên quan (trừ người thao tác).
+// emailEvent: nếu có thì gửi thêm email cho cùng những người đó.
+async function notifyParticipants(task, actor, data, emailEvent) {
   try {
     const participantIds = await getParticipantIds(task);
     const items = buildItems(participantIds, actor._id, {
@@ -53,12 +55,21 @@ async function notifyParticipants(task, actor, data) {
       ...data
     });
     await createNotifications(items);
+
+    if (emailEvent) {
+      queueTaskEventEmails({
+        eventType: emailEvent,
+        task,
+        actor,
+        userIds: participantIds
+      });
+    }
   } catch (error) {
     console.error('Không tạo được thông báo:', error.message);
   }
 }
 
-// Giao việc mới
+// Giao việc mới: thông báo và email
 async function notifyTaskAssigned(task, actor, userIds) {
   const items = buildItems(userIds, actor._id, {
     taskId: task._id,
@@ -67,9 +78,16 @@ async function notifyTaskAssigned(task, actor, userIds) {
     message: `${actor.fullName} đã giao cho bạn công việc "${task.title}"`
   });
   await createNotifications(items);
+
+  queueTaskEventEmails({
+    eventType: 'task_assigned',
+    task,
+    actor,
+    userIds
+  });
 }
 
-// Chia sẻ công việc
+// Chia sẻ công việc: thông báo và email
 async function notifyTaskShared(task, actor, userIds, permission) {
   const items = buildItems(userIds, actor._id, {
     taskId: task._id,
@@ -80,16 +98,30 @@ async function notifyTaskShared(task, actor, userIds, permission) {
       `(quyền ${PERMISSION_LABELS[permission] || permission})`
   });
   await createNotifications(items);
+
+  queueTaskEventEmails({
+    eventType: 'task_shared',
+    task,
+    actor,
+    userIds,
+    extra: { permission }
+  });
 }
 
-// Đổi trạng thái (hoàn thành có loại thông báo riêng)
+// Đổi trạng thái: hoàn thành có loại thông báo riêng và có email,
+// các trạng thái khác chỉ có thông báo trong ứng dụng
 async function notifyTaskStatusChanged(task, actor, oldStatus) {
   if (task.status === 'completed') {
-    await notifyParticipants(task, actor, {
-      type: 'task_completed',
-      title: 'Công việc đã hoàn thành',
-      message: `${actor.fullName} đã đánh dấu hoàn thành công việc "${task.title}"`
-    });
+    await notifyParticipants(
+      task,
+      actor,
+      {
+        type: 'task_completed',
+        title: 'Công việc đã hoàn thành',
+        message: `${actor.fullName} đã đánh dấu hoàn thành công việc "${task.title}"`
+      },
+      'task_completed'
+    );
     return;
   }
 
@@ -103,13 +135,18 @@ async function notifyTaskStatusChanged(task, actor, oldStatus) {
   });
 }
 
-// Đổi hạn hoàn thành
+// Đổi hạn hoàn thành: thông báo và email
 async function notifyTaskDueChanged(task, actor) {
-  await notifyParticipants(task, actor, {
-    type: 'task_due_changed',
-    title: 'Hạn hoàn thành thay đổi',
-    message: `${actor.fullName} đã thay đổi hạn hoàn thành của công việc "${task.title}"`
-  });
+  await notifyParticipants(
+    task,
+    actor,
+    {
+      type: 'task_due_changed',
+      title: 'Hạn hoàn thành thay đổi',
+      message: `${actor.fullName} đã thay đổi hạn hoàn thành của công việc "${task.title}"`
+    },
+    'task_due_changed'
+  );
 }
 
 module.exports = {
