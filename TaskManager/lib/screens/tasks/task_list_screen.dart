@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/task.dart';
 import '../../models/user.dart';
 import '../../services/api_client.dart';
+import '../../services/notification_service.dart';
 import '../../services/task_service.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/task_card.dart';
+import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
 import 'task_detail_screen.dart';
@@ -38,14 +42,20 @@ class _TaskListScreenState extends State<TaskListScreen>
     'shared': 'Chưa có công việc nào được chia sẻ cho bạn.',
   };
 
+  // Cứ 30 giây hỏi server số thông báo chưa đọc một lần
+  static const Duration _unreadPollInterval = Duration(seconds: 30);
+
   final _taskService = TaskService();
+  final _notificationService = NotificationService();
   late final TabController _tabController;
+  Timer? _unreadTimer;
 
   late User _user;
   List<Task> _tasks = [];
   String _scope = 'all';
   bool _isLoading = true;
   String? _error;
+  int _unreadCount = 0;
 
   // Số thứ tự của lần tải mới nhất, để bỏ qua kết quả cũ về chậm
   int _requestId = 0;
@@ -57,10 +67,13 @@ class _TaskListScreenState extends State<TaskListScreen>
     _tabController = TabController(length: _scopes.length, vsync: this);
     _tabController.addListener(_onTabChanged);
     _loadTasks();
+    _loadUnreadCount();
+    _unreadTimer = Timer.periodic(_unreadPollInterval, (_) => _loadUnreadCount());
   }
 
   @override
   void dispose() {
+    _unreadTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -70,6 +83,17 @@ class _TaskListScreenState extends State<TaskListScreen>
     if (scope != _scope) {
       _scope = scope;
       _loadTasks();
+    }
+  }
+
+  // Lấy số thông báo chưa đọc; lỗi thì giữ nguyên số cũ, không làm phiền người dùng
+  Future<void> _loadUnreadCount() async {
+    try {
+      final count = await _notificationService.unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadCount = count);
+    } on ApiException {
+      // Bỏ qua
     }
   }
 
@@ -130,6 +154,18 @@ class _TaskListScreenState extends State<TaskListScreen>
     }
     // Luôn tải lại vì trạng thái hay quyền có thể đã đổi ở màn hình chi tiết
     _loadTasks(showLoading: false);
+    _loadUnreadCount();
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+    );
+
+    if (!mounted) return;
+    // Số chưa đọc đã đổi, và người dùng có thể vừa đổi trạng thái công việc
+    _loadUnreadCount();
+    _loadTasks(showLoading: false);
   }
 
   void _openProfile() {
@@ -152,7 +188,10 @@ class _TaskListScreenState extends State<TaskListScreen>
     }
 
     return RefreshIndicator(
-      onRefresh: () => _loadTasks(showLoading: false),
+      onRefresh: () async {
+        _loadUnreadCount();
+        await _loadTasks(showLoading: false);
+      },
       child: _tasks.isEmpty
           ? ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -186,6 +225,15 @@ class _TaskListScreenState extends State<TaskListScreen>
       appBar: AppBar(
         title: const Text('Công việc'),
         actions: [
+          IconButton(
+            tooltip: 'Thông báo',
+            onPressed: _openNotifications,
+            icon: Badge.count(
+              count: _unreadCount,
+              isLabelVisible: _unreadCount > 0,
+              child: const Icon(Icons.notifications_outlined),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.account_circle),
             tooltip: 'Cá nhân',
