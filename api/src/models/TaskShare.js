@@ -32,7 +32,9 @@ const taskShareSchema = new mongoose.Schema(
   },
   {
     // Tài liệu chỉ có createdAt (thời điểm chia sẻ), không cần updatedAt
-    timestamps: { createdAt: true, updatedAt: false }
+    timestamps: { createdAt: true, updatedAt: false },
+    // Đặt đúng tên collection như tài liệu (mặc định Mongoose sẽ đặt là "taskshares")
+    collection: 'task_shares'
   }
 );
 

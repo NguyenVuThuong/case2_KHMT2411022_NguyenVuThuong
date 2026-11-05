@@ -5,7 +5,9 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const shareRoutes = require('./routes/shareRoutes');
+const emailLogRoutes = require('./routes/emailLogRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -47,12 +49,16 @@ app.use('/api/auth', authRoutes);
 // Các route người dùng: /api/users/...
 app.use('/api/users', userRoutes);
 
-// Giao việc và chia sẻ: gắn trước /api/tasks để đường dẫn dài hơn được xử lý trước
+// Giao việc, chia sẻ, lịch sử email: gắn trước /api/tasks để đường dẫn dài hơn được xử lý trước
 app.use('/api/tasks/:id/assignees', assignmentRoutes);
 app.use('/api/tasks/:id/shares', shareRoutes);
+app.use('/api/tasks/:id/email-logs', emailLogRoutes);
 
 // Các route công việc: /api/tasks/...
 app.use('/api/tasks', taskRoutes);
+
+// Các route thông báo: /api/notifications/...
+app.use('/api/notifications', notificationRoutes);
 
 // Hai middleware này PHẢI đặt cuối cùng, sau tất cả route
 app.use(notFound);

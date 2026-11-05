@@ -1,7 +1,12 @@
 const Task = require('../models/Task');
 const TaskShare = require('../models/TaskShare');
+const Notification = require('../models/Notification');
 const { parseOptionalDate } = require('../validators/taskValidator');
 const { computeAccess, findAccessibleTasks } = require('../services/taskService');
+const {
+  notifyTaskStatusChanged,
+  notifyTaskDueChanged
+} = require('../services/notificationService');
 
 // Các phạm vi lọc cho GET /api/tasks
 const SCOPES = ['all', 'created', 'assigned', 'shared'];
@@ -86,6 +91,9 @@ async function getTask(req, res) {
 async function updateTask(req, res) {
   const task = req.task;
 
+  // Ghi nhớ hạn cũ để biết sau khi sửa hạn có thay đổi thật không
+  const oldDueTime = task.dueDate ? task.dueDate.getTime() : null;
+
   // Chỉ cập nhật những trường được phép và có gửi lên.
   // Mọi trường khác (createdBy, status, ...) trong body đều bị bỏ qua.
   const body = req.body;
@@ -116,6 +124,12 @@ async function updateTask(req, res) {
 
   await task.save();
 
+  // Chỉ báo khi hạn hoàn thành thật sự thay đổi
+  const newDueTime = task.dueDate ? task.dueDate.getTime() : null;
+  if (oldDueTime !== newDueTime) {
+    await notifyTaskDueChanged(task, req.user);
+  }
+
   res.json({
     status: 'success',
     message: 'Cập nhật công việc thành công',
@@ -127,8 +141,14 @@ async function updateTask(req, res) {
 async function updateTaskStatus(req, res) {
   const task = req.task;
 
+  const oldStatus = task.status;
   task.status = req.body.status;
   await task.save();
+
+  // Chỉ báo khi trạng thái thật sự thay đổi
+  if (oldStatus !== task.status) {
+    await notifyTaskStatusChanged(task, req.user, oldStatus);
+  }
 
   res.json({
     status: 'success',
@@ -141,8 +161,9 @@ async function updateTaskStatus(req, res) {
 async function deleteTask(req, res) {
   const task = req.task;
 
-  // Xóa luôn các bản ghi chia sẻ của công việc này để không còn dữ liệu mồ côi
+  // Xóa luôn dữ liệu liên quan để không còn bản ghi mồ côi
   await TaskShare.deleteMany({ taskId: task._id });
+  await Notification.deleteMany({ taskId: task._id });
   await task.deleteOne();
 
   res.json({
