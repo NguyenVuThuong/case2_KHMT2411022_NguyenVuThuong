@@ -8,6 +8,7 @@ const shareRoutes = require('./routes/shareRoutes');
 const emailLogRoutes = require('./routes/emailLogRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const statisticsRoutes = require('./routes/statisticsRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -59,6 +60,9 @@ app.use('/api/tasks', taskRoutes);
 
 // Các route thông báo: /api/notifications/...
 app.use('/api/notifications', notificationRoutes);
+
+// Các route thống kê: /api/statistics/...
+app.use('/api/statistics', statisticsRoutes);
 
 // Hai middleware này PHẢI đặt cuối cùng, sau tất cả route
 app.use(notFound);
