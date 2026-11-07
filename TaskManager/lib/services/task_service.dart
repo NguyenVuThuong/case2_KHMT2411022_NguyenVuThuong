@@ -1,12 +1,17 @@
 import '../models/task.dart';
+import '../models/task_query.dart';
 import 'api_client.dart';
 
 class TaskService {
   final ApiClient _api = ApiClient();
 
-  // Lấy danh sách công việc theo phạm vi: all, created, assigned, shared
-  Future<List<Task>> getTasks({String scope = 'all'}) async {
-    final response = await _api.get('/tasks?scope=$scope');
+  // Lấy danh sách công việc theo phạm vi, kèm tìm kiếm, lọc và sắp xếp
+  Future<List<Task>> getTasks({
+    String scope = 'all',
+    TaskQuery query = const TaskQuery(),
+  }) async {
+    final queryString = Uri(queryParameters: query.toParams(scope)).query;
+    final response = await _api.get('/tasks?$queryString');
     final data = response['data'] as Map<String, dynamic>;
     final list = data['tasks'] as List;
     return list
