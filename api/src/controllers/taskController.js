@@ -8,9 +8,6 @@ const {
   notifyTaskDueChanged
 } = require('../services/notificationService');
 
-// Các phạm vi lọc cho GET /api/tasks
-const SCOPES = ['all', 'created', 'assigned', 'shared'];
-
 // Chuẩn hóa dữ liệu công việc trả về cho client.
 // Thêm myRole và permissions để Flutter biết nên hiện nút nào
 // (backend vẫn là nơi kiểm tra quyền thật sự).
@@ -56,24 +53,26 @@ async function createTask(req, res) {
   });
 }
 
-// GET /api/tasks?scope=all|created|assigned|shared
+// GET /api/tasks?scope=&q=&status=&priority=&assignee=&sortBy=&order=
+// (middleware validateTaskQuery đã kiểm tra và chuẩn hóa vào req.taskQuery)
 async function getTasks(req, res) {
-  const scope = req.query.scope === undefined ? 'all' : req.query.scope;
-
-  if (typeof scope !== 'string' || !SCOPES.includes(scope)) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Phạm vi không hợp lệ',
-      errors: [`scope phải là một trong: ${SCOPES.join(', ')}`]
-    });
-  }
-
-  const items = await findAccessibleTasks(req.user._id, scope);
+  const query = req.taskQuery;
+  const items = await findAccessibleTasks(req.user._id, query);
 
   res.json({
     status: 'success',
     data: {
       count: items.length,
+      // Trả lại các điều kiện đã áp dụng để client và người test dễ đối chiếu
+      query: {
+        scope: query.scope,
+        q: query.q,
+        status: query.status,
+        priority: query.priority,
+        assignee: query.assigneeId,
+        sortBy: query.sortBy,
+        order: query.order
+      },
       tasks: items.map(({ task, access }) => toTaskResponse(task, access))
     }
   });

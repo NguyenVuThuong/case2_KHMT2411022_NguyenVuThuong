@@ -1,14 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/task.dart';
+import '../../models/task_query.dart';
 import '../../models/user.dart';
 import '../../services/api_client.dart';
 import '../../services/notification_service.dart';
 import '../../services/task_service.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/task_card.dart';
+import '../../widgets/task_filter_sheet.dart';
 import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
@@ -45,14 +48,20 @@ class _TaskListScreenState extends State<TaskListScreen>
   // Cứ 30 giây hỏi server số thông báo chưa đọc một lần
   static const Duration _unreadPollInterval = Duration(seconds: 30);
 
+  // Chờ người dùng ngừng gõ rồi mới tìm, tránh gọi API sau mỗi ký tự
+  static const Duration _searchDelay = Duration(milliseconds: 400);
+
   final _taskService = TaskService();
   final _notificationService = NotificationService();
+  final _searchController = TextEditingController();
   late final TabController _tabController;
   Timer? _unreadTimer;
+  Timer? _searchDebounce;
 
   late User _user;
   List<Task> _tasks = [];
   String _scope = 'all';
+  TaskQuery _query = const TaskQuery();
   bool _isLoading = true;
   String? _error;
   int _unreadCount = 0;
@@ -74,6 +83,8 @@ class _TaskListScreenState extends State<TaskListScreen>
   @override
   void dispose() {
     _unreadTimer?.cancel();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -109,7 +120,7 @@ class _TaskListScreenState extends State<TaskListScreen>
     }
 
     try {
-      final tasks = await _taskService.getTasks(scope: _scope);
+      final tasks = await _taskService.getTasks(scope: _scope, query: _query);
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _tasks = tasks;
@@ -123,6 +134,66 @@ class _TaskListScreenState extends State<TaskListScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  // Đổi điều kiện tìm, lọc, sắp xếp rồi tải lại danh sách
+  void _applyQuery(TaskQuery query) {
+    setState(() => _query = query);
+    _loadTasks();
+  }
+
+  // ----- Tìm kiếm -----
+  void _onSearchChanged(String value) {
+    // Cập nhật để nút xóa từ khóa hiện hoặc ẩn đúng lúc
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(_searchDelay, () {
+      if (!mounted) return;
+      _applySearch(_searchController.text);
+    });
+  }
+
+  void _submitSearch(String value) {
+    _searchDebounce?.cancel();
+    _applySearch(value);
+  }
+
+  void _applySearch(String value) {
+    final text = value.trim();
+    // Từ khóa không đổi thì không cần tải lại
+    if (text == _query.search.trim()) {
+      return;
+    }
+    _applyQuery(_query.withSearch(text));
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {});
+    _applySearch('');
+  }
+
+  // ----- Bộ lọc -----
+  Future<void> _openFilters() async {
+    // Áp dụng ngay từ khóa đang gõ dở để bảng lọc dùng điều kiện mới nhất
+    _searchDebounce?.cancel();
+    final current = _query.withSearch(_searchController.text.trim());
+
+    final result = await showTaskFilterSheet(context, current);
+    if (!mounted) return;
+
+    if (result != null) {
+      _applyQuery(result);
+    } else if (current.search != _query.search) {
+      _applyQuery(current);
+    }
+  }
+
+  void _clearFilters() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    _applyQuery(_query.cleared());
   }
 
   void _showMessage(String message) {
@@ -179,6 +250,155 @@ class _TaskListScreenState extends State<TaskListScreen>
     );
   }
 
+  // Hàng gồm ô tìm kiếm, nút lọc và nút sắp xếp
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 4, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              // Backend giới hạn từ khóa tối đa 100 ký tự
+              inputFormatters: [LengthLimitingTextInputFormatter(100)],
+              onChanged: _onSearchChanged,
+              onSubmitted: _submitSearch,
+              decoration: InputDecoration(
+                hintText: 'Tìm theo tên công việc',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                  icon: const Icon(Icons.clear),
+                  tooltip: 'Xóa từ khóa',
+                  onPressed: _clearSearch,
+                ),
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Bộ lọc',
+            onPressed: _openFilters,
+            icon: Badge(
+              label: Text('${_query.filterCount}'),
+              isLabelVisible: _query.filterCount > 0,
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
+          PopupMenuButton<SortOption>(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sắp xếp',
+            onSelected: (option) =>
+                _applyQuery(_query.withSort(option.sortBy, option.order)),
+            itemBuilder: (context) => kSortOptions
+                .map(
+                  (option) => CheckedPopupMenuItem<SortOption>(
+                value: option,
+                checked: _query.isSortedBy(option),
+                child: Text(option.label),
+              ),
+            )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Các chip cho bộ lọc đang áp dụng, bấm dấu X để bỏ từng điều kiện
+  Widget _buildActiveFilters() {
+    final chips = <Widget>[];
+
+    final status = _query.status;
+    if (status != null) {
+      chips.add(
+        InputChip(
+          label: Text(kStatusLabels[status] ?? status),
+          onDeleted: () => _applyQuery(_query.withStatus(null)),
+        ),
+      );
+    }
+
+    final priority = _query.priority;
+    if (priority != null) {
+      chips.add(
+        InputChip(
+          label: Text('Ưu tiên: ${kPriorityLabels[priority] ?? priority}'),
+          onDeleted: () => _applyQuery(_query.withPriority(null)),
+        ),
+      );
+    }
+
+    final assignee = _query.assignee;
+    if (assignee != null) {
+      final label = assignee == 'me'
+          ? 'Giao cho tôi'
+          : 'Giao cho ${_query.assigneeName ?? 'người đã chọn'}';
+      chips.add(
+        InputChip(
+          label: Text(label),
+          onDeleted: () => _applyQuery(_query.withAssignee(null, null)),
+        ),
+      );
+    }
+
+    if (chips.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(spacing: 8, runSpacing: 4, children: chips),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    if (_query.hasFilters) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 120),
+          const Center(child: Icon(Icons.search_off, size: 64)),
+          const SizedBox(height: 12),
+          const Center(
+            child: Text(
+              'Không có công việc nào phù hợp\nvới tìm kiếm hoặc bộ lọc.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: FilledButton.tonal(
+              onPressed: _clearFilters,
+              child: const Text('Xóa bộ lọc'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 120),
+        const Center(child: Icon(Icons.inbox_outlined, size: 64)),
+        const SizedBox(height: 12),
+        Center(
+          child: Text(
+            _emptyMessages[_scope] ?? 'Chưa có công việc nào.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
       return const LoadingView();
@@ -193,20 +413,7 @@ class _TaskListScreenState extends State<TaskListScreen>
         await _loadTasks(showLoading: false);
       },
       child: _tasks.isEmpty
-          ? ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const SizedBox(height: 160),
-          const Center(child: Icon(Icons.inbox_outlined, size: 64)),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              _emptyMessages[_scope] ?? 'Chưa có công việc nào.',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      )
+          ? _buildEmptyState()
           : ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(top: 8, bottom: 88),
@@ -248,7 +455,15 @@ class _TaskListScreenState extends State<TaskListScreen>
               .toList(),
         ),
       ),
-      body: _buildBody(),
+      // Ô tìm kiếm và chip bộ lọc nằm NGOÀI phần danh sách,
+      // nên vẫn giữ nguyên con trỏ khi danh sách đang tải lại
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          _buildActiveFilters(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreate,
         icon: const Icon(Icons.add),

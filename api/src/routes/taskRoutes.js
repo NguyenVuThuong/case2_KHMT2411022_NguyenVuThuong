@@ -13,6 +13,7 @@ const {
   validateStatus,
   validateTaskId
 } = require('../validators/taskValidator');
+const { validateTaskQuery } = require('../validators/taskQueryValidator');
 const { protect } = require('../middleware/authMiddleware');
 const { requireTaskAccess } = require('../middleware/permissionMiddleware');
 
@@ -21,8 +22,8 @@ const router = express.Router();
 // Mọi API công việc đều yêu cầu đăng nhập
 router.use(protect);
 
-// GET /api/tasks và POST /api/tasks
-router.get('/', getTasks);
+// GET /api/tasks: tìm kiếm, lọc, sắp xếp. POST /api/tasks: tạo công việc
+router.get('/', validateTaskQuery, getTasks);
 router.post('/', validateCreateTask, createTask);
 
 // Các route theo :id. Thứ tự: kiểm tra id, kiểm tra quyền, kiểm tra dữ liệu, xử lý
