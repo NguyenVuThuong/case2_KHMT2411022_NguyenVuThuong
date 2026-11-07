@@ -5,6 +5,7 @@ import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 import '../../utils/validators.dart';
 import '../auth/login_screen.dart';
+import 'statistics_section.dart';
 
 class ProfileScreen extends StatefulWidget {
   final User user;
@@ -139,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         height: 96,
         fit: BoxFit.cover,
         // Đường dẫn ảnh sai hoặc không tải được thì hiện chữ cái đầu
-        errorBuilder: (_, _, _) => _buildInitial(),
+        errorBuilder: (_, __, ___) => _buildInitial(),
       ),
     );
   }
@@ -147,13 +148,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cá nhân')),
+      appBar: AppBar(title: const Text('Cá nhân và thống kê')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 450),
+              constraints: const BoxConstraints(maxWidth: 500),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -167,6 +168,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 24),
+                    // Khối thống kê công việc (tự tải dữ liệu của nó)
+                    const StatisticsSection(),
+                    const Divider(height: 40),
+                    Text(
+                      'Thông tin cá nhân',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _fullNameController,
                       textCapitalization: TextCapitalization.words,
