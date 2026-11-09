@@ -140,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         height: 96,
         fit: BoxFit.cover,
         // Đường dẫn ảnh sai hoặc không tải được thì hiện chữ cái đầu
-        errorBuilder: (_, __, ___) => _buildInitial(),
+        errorBuilder: (_, _, _) => _buildInitial(),
       ),
     );
   }

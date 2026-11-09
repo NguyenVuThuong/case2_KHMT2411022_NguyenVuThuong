@@ -7,8 +7,12 @@ const EMAIL_EVENT_TYPES = [
   'task_assigned',
   'task_shared',
   'task_due_changed',
-  'task_completed'
+  'task_completed',
+  'task_due_soon'
 ];
+
+// Mỗi email được thử gửi tối đa bấy nhiêu lần (gồm cả lần gửi đầu tiên)
+const MAX_ATTEMPTS = 3;
 
 const emailLogSchema = new mongoose.Schema(
   {
@@ -52,6 +56,22 @@ const emailLogSchema = new mongoose.Schema(
     sentAt: {
       type: Date,
       default: null
+    },
+    // Thời điểm của lần thử gần nhất
+    lastAttemptAt: {
+      type: Date,
+      default: null
+    },
+    // Người thực hiện thao tác (để dựng lại nội dung email khi gửi lại)
+    actorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    // Quyền chia sẻ (chỉ dùng cho email chia sẻ)
+    permission: {
+      type: String,
+      default: ''
     }
   },
   {
@@ -70,3 +90,4 @@ const EmailLog = mongoose.model('EmailLog', emailLogSchema);
 module.exports = EmailLog;
 module.exports.EMAIL_STATUSES = EMAIL_STATUSES;
 module.exports.EMAIL_EVENT_TYPES = EMAIL_EVENT_TYPES;
+module.exports.MAX_ATTEMPTS = MAX_ATTEMPTS;

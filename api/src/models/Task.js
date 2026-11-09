@@ -49,10 +49,15 @@ const taskSchema = new mongoose.Schema(
       enum: PRIORITIES,
       default: 'medium'
     },
-    status: {
+        status: {
       type: String,
       enum: STATUSES,
       default: 'todo'
+    },
+    // Hạn hoàn thành đã được nhắc rồi (để không nhắc trùng)
+    dueReminderSentFor: {
+      type: Date,
+      default: null
     }
   },
   {

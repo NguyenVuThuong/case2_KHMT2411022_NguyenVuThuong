@@ -1,5 +1,10 @@
 const User = require('../models/User');
 const { notifyTaskAssigned } = require('../services/notificationService');
+const {
+  logActivity,
+  snapshotOf,
+  snapshotUser
+} = require('../services/activityService');
 
 function sameId(a, b) {
   return String(a) === String(b);
@@ -45,6 +50,9 @@ async function listAssignees(req, res) {
 async function addAssignees(req, res) {
   const task = req.task;
   const { emails = [], userIds = [], primaryUserId } = req.body;
+
+  // Ghi nhớ người phụ trách chính hiện tại để biết sau đó có đổi không
+  const oldPrimaryId = task.primaryAssigneeId ? String(task.primaryAssigneeId) : null;
 
   // Chuẩn hóa và bỏ trùng
   const normalizedEmails = [...new Set(emails.map((e) => e.trim().toLowerCase()))];
@@ -101,6 +109,21 @@ async function addAssignees(req, res) {
     newUsers.map((u) => u._id)
   );
 
+  // Ghi lịch sử
+  if (newUsers.length > 0) {
+    await logActivity(task._id, req.user, 'assigned', {
+      users: newUsers.map(snapshotOf)
+    });
+  }
+  if (
+    primaryUserId !== undefined &&
+    String(primaryUserId).toLowerCase() !== oldPrimaryId
+  ) {
+    await logActivity(task._id, req.user, 'primary_assignee_changed', {
+      user: await snapshotUser(primaryUserId)
+    });
+  }
+
   const assignees = await buildAssigneeList(task);
 
   res.json({
@@ -127,8 +150,19 @@ async function updateAssignee(req, res) {
     });
   }
 
+  const wasPrimary = Boolean(
+    task.primaryAssigneeId && sameId(task.primaryAssigneeId, userId)
+  );
+
   task.primaryAssigneeId = userId;
   await task.save();
+
+  // Chỉ ghi lịch sử khi người phụ trách chính thật sự đổi
+  if (!wasPrimary) {
+    await logActivity(task._id, req.user, 'primary_assignee_changed', {
+      user: await snapshotUser(userId)
+    });
+  }
 
   const assignees = await buildAssigneeList(task);
 
@@ -152,6 +186,8 @@ async function removeAssignee(req, res) {
     });
   }
 
+  const removedUser = await snapshotUser(userId);
+
   task.assigneeIds = task.assigneeIds.filter((id) => !sameId(id, userId));
 
   // Nếu vừa gỡ người phụ trách chính: người kế tiếp lên thay, hết người thì để trống
@@ -161,6 +197,8 @@ async function removeAssignee(req, res) {
   }
 
   await task.save();
+
+  await logActivity(task._id, req.user, 'unassigned', { user: removedUser });
 
   const assignees = await buildAssigneeList(task);
 
