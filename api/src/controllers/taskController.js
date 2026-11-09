@@ -1,12 +1,18 @@
 const Task = require('../models/Task');
 const TaskShare = require('../models/TaskShare');
 const Notification = require('../models/Notification');
+const TaskActivity = require('../models/TaskActivity');
 const { parseOptionalDate } = require('../validators/taskValidator');
 const { computeAccess, findAccessibleTasks } = require('../services/taskService');
 const {
   notifyTaskStatusChanged,
   notifyTaskDueChanged
 } = require('../services/notificationService');
+const {
+  logActivity,
+  takeTaskSnapshot,
+  diffTaskSnapshots
+} = require('../services/activityService');
 
 // Chuẩn hóa dữ liệu công việc trả về cho client.
 // Thêm myRole và permissions để Flutter biết nên hiện nút nào
@@ -45,6 +51,8 @@ async function createTask(req, res) {
     priority,
     status
   });
+
+  await logActivity(task._id, req.user, 'created', { title: task.title });
 
   res.status(201).json({
     status: 'success',
@@ -90,8 +98,8 @@ async function getTask(req, res) {
 async function updateTask(req, res) {
   const task = req.task;
 
-  // Ghi nhớ hạn cũ để biết sau khi sửa hạn có thay đổi thật không
-  const oldDueTime = task.dueDate ? task.dueDate.getTime() : null;
+  // Chụp trạng thái trước khi sửa để biết sau đó có thay đổi thật không
+  const before = takeTaskSnapshot(task);
 
   // Chỉ cập nhật những trường được phép và có gửi lên.
   // Mọi trường khác (createdBy, status, ...) trong body đều bị bỏ qua.
@@ -123,10 +131,17 @@ async function updateTask(req, res) {
 
   await task.save();
 
+  const after = takeTaskSnapshot(task);
+
   // Chỉ báo khi hạn hoàn thành thật sự thay đổi
-  const newDueTime = task.dueDate ? task.dueDate.getTime() : null;
-  if (oldDueTime !== newDueTime) {
+  if (before.dueDate !== after.dueDate) {
     await notifyTaskDueChanged(task, req.user);
+  }
+
+  // Chỉ ghi lịch sử khi có thay đổi thật
+  const changes = diffTaskSnapshots(before, after);
+  if (changes.length > 0) {
+    await logActivity(task._id, req.user, 'updated', { changes });
   }
 
   res.json({
@@ -144,9 +159,13 @@ async function updateTaskStatus(req, res) {
   task.status = req.body.status;
   await task.save();
 
-  // Chỉ báo khi trạng thái thật sự thay đổi
+  // Chỉ báo và ghi lịch sử khi trạng thái thật sự thay đổi
   if (oldStatus !== task.status) {
     await notifyTaskStatusChanged(task, req.user, oldStatus);
+    await logActivity(task._id, req.user, 'status_changed', {
+      from: oldStatus,
+      to: task.status
+    });
   }
 
   res.json({
@@ -163,6 +182,7 @@ async function deleteTask(req, res) {
   // Xóa luôn dữ liệu liên quan để không còn bản ghi mồ côi
   await TaskShare.deleteMany({ taskId: task._id });
   await Notification.deleteMany({ taskId: task._id });
+  await TaskActivity.deleteMany({ taskId: task._id });
   await task.deleteOne();
 
   res.json({

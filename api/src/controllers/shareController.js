@@ -1,6 +1,11 @@
 const User = require('../models/User');
 const TaskShare = require('../models/TaskShare');
 const { notifyTaskShared } = require('../services/notificationService');
+const {
+  logActivity,
+  snapshotOf,
+  snapshotUser
+} = require('../services/activityService');
 
 // Chuẩn hóa một bản ghi chia sẻ (đã populate thông tin người được chia sẻ)
 function toShareResponse(share) {
@@ -115,6 +120,11 @@ async function addShares(req, res) {
       newUsers.map((u) => u._id),
       permission
     );
+
+    await logActivity(task._id, req.user, 'shared', {
+      users: newUsers.map(snapshotOf),
+      permission
+    });
   }
 
   const shares = await buildShareList(task._id);
@@ -145,8 +155,18 @@ async function updateShare(req, res) {
     });
   }
 
+  const oldPermission = share.permission;
   share.permission = req.body.permission;
   await share.save();
+
+  // Chỉ ghi lịch sử khi quyền thật sự đổi
+  if (oldPermission !== share.permission) {
+    await logActivity(req.task._id, req.user, 'share_permission_changed', {
+      user: await snapshotUser(share.userId),
+      from: oldPermission,
+      to: share.permission
+    });
+  }
 
   const shares = await buildShareList(req.task._id);
 
@@ -171,7 +191,11 @@ async function removeShare(req, res) {
     });
   }
 
+  const removedUser = await snapshotUser(share.userId);
+
   await share.deleteOne();
+
+  await logActivity(req.task._id, req.user, 'share_revoked', { user: removedUser });
 
   const shares = await buildShareList(req.task._id);
 

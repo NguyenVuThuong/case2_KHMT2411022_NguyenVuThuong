@@ -15,7 +15,7 @@ import '../../widgets/user_avatar.dart';
 import '../assignment/assign_task_screen.dart';
 import '../sharing/task_sharing_screen.dart';
 import 'task_edit_screen.dart';
-
+import 'task_activity_screen.dart';
 class TaskDetailScreen extends StatefulWidget {
   final String taskId;
 
@@ -146,6 +146,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     if (!mounted) return;
     _loadShares();
+  }
+  // Mở màn hình lịch sử hoạt động của công việc
+  void _openHistory() {
+    final task = _task;
+    if (task == null) {
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            TaskActivityScreen(taskId: task.id, taskTitle: task.title),
+      ),
+    );
   }
 
   Future<void> _changeStatus(String newStatus) async {
@@ -415,6 +429,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
         actions: [
+          if (task != null)
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Lịch sử hoạt động',
+              onPressed: _openHistory,
+            ),
           // Chỉ hiện nút khi có đúng quyền (backend vẫn kiểm tra lại)
           if (task != null && task.can('editContent'))
             IconButton(
