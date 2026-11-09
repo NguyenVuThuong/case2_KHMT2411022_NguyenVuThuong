@@ -130,6 +130,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
         return Icons.share_outlined;
       case 'task_completed':
         return Icons.check_circle_outline;
+      case 'task_due_soon':
+        return Icons.alarm;
       case 'task_due_changed':
         return Icons.event_outlined;
       default:

@@ -6,9 +6,9 @@ const NOTIFICATION_TYPES = [
   'task_shared',
   'task_status_changed',
   'task_completed',
-  'task_due_changed'
+  'task_due_changed',
+  'task_due_soon'
 ];
-
 const notificationSchema = new mongoose.Schema(
   {
     // Người nhận thông báo

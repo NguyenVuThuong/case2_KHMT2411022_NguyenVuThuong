@@ -73,6 +73,12 @@ const EVENTS = {
     intro: ({ actor }) =>
       `${actor.fullName} đã thay đổi hạn hoàn thành của công việc dưới đây.`
   },
+  task_due_soon: {
+    subject: 'Công việc sắp đến hạn',
+    heading: 'Công việc sắp đến hạn',
+    intro: () =>
+      'Công việc dưới đây sắp đến hạn hoàn thành, hãy kiểm tra lại tiến độ.'
+  },
   task_completed: {
     subject: 'Công việc đã hoàn thành',
     heading: 'Công việc đã hoàn thành',

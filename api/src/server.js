@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const app = require('./app');
 const connectDatabase = require('./config/database');
+const { startReminderScheduler } = require('./services/reminderService');
 
 const PORT = process.env.PORT || 3000;
 
@@ -12,6 +13,8 @@ async function startServer() {
 
   app.listen(PORT, () => {
     console.log(`Server is running at http://localhost:${PORT}`);
+    // Bật tác vụ nhắc hạn định kỳ
+    startReminderScheduler();
   });
 }
 
