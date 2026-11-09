@@ -9,6 +9,7 @@ const emailLogRoutes = require('./routes/emailLogRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const statisticsRoutes = require('./routes/statisticsRoutes');
+const emailRetryRoutes = require('./routes/emailRetryRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -63,6 +64,9 @@ app.use('/api/notifications', notificationRoutes);
 
 // Các route thống kê: /api/statistics/...
 app.use('/api/statistics', statisticsRoutes);
+
+// Thử gửi lại email: /api/email-logs/:id/retry
+app.use('/api/email-logs', emailRetryRoutes);
 
 // Hai middleware này PHẢI đặt cuối cùng, sau tất cả route
 app.use(notFound);
